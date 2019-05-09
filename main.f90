@@ -7,7 +7,7 @@ USE load_data
 USE starting_points
 USE maxlik
 USE simplex
-!USE diagnostics
+USE diagnostics
 !USE skewness_kurtosis_yields
 !USE lb_change_effects
 !USE asymptotic_variance
@@ -43,7 +43,7 @@ IF ((to0 .EQ. 1) .OR. (to1 .EQ. 1) .OR. (to2 .EQ. 1)) THEN
         !
         CALL GETARG(1,ichar)
         seed = INUM(ichar)
-        IF (ALL(seed .EQ. 0)) seed = 25
+        IF (ALL(seed .EQ. 0)) seed = 3
         !
     END IF    
     !
@@ -145,22 +145,22 @@ END IF
 !    CALL compute_skewness_kurtosis_yields(theta,llcheck,objf,grad)
 !    !
 !END IF
-!!
-!! Computing diagnostics
-!!
-!IF (to4 .EQ. 1) THEN
-!    !
-!    ! Reading parameters estimates and data
-!    !
-!    CALL admissible_starting_point(seed,theta,llcheck)
-!    CALL input_data()
-!    !
-!    ! Computing and writing diagnostics
-!    !
-!    CALL compute_diagnostics(theta,llcheck,objf,grad)
+!
+! Computing diagnostics
+!
+IF (to4 .EQ. 1) THEN
+    !
+    ! Reading parameters estimates and data
+    !
+    CALL admissible_starting_point(seed,theta,llcheck)
+    CALL input_data()
+    !
+    ! Computing and writing diagnostics
+    !
+    CALL compute_diagnostics(theta,llcheck,objf,grad)
 !    CALL compute_liftoff_yields(theta,llcheck,objf,grad)
-!    !
-!END IF
+    !
+END IF
 !!
 !! Computing effects of a change in the lower bound
 !!

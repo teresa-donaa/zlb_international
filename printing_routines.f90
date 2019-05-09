@@ -127,13 +127,13 @@ CONTAINS
     ! Declaring local variables
     !
     INTEGER :: i, ic
-    REAL(8) :: delta0(num_C), r_inf
+    REAL(8) :: delta0(num_C), r_inf, omega_dex
     REAL(8), DIMENSION(num_X) :: mu
-    REAL(8), DIMENSION(num_XC(1)) :: muQ_1, delta1_1
-    REAL(8), DIMENSION(num_XC(2)) :: muQ_2, delta1_2
+    REAL(8), DIMENSION(num_XC(1)) :: mu_1, muQ_1, delta1_1, lambda_1
+    REAL(8), DIMENSION(num_XC(2)) :: mu_2, muQ_2, delta1_2, lambda_2
     REAL(8), DIMENSION(num_X,num_X) :: Gamm, Sigma, Phi
-    REAL(8), DIMENSION(num_XC(1),num_XC(1)) :: PhiQ_1, Sigma_1
-    REAL(8), DIMENSION(num_XC(2),num_XC(2)) :: PhiQ_2, Sigma_2
+    REAL(8), DIMENSION(num_XC(1),num_XC(1)) :: PhiQ_1, Sigma_1, Phi_1, LLambda_1
+    REAL(8), DIMENSION(num_XC(2),num_XC(2)) :: PhiQ_2, Sigma_2, Phi_2, LLambda_2
     REAL(8), DIMENSION(num_C*num_K,num_C*num_K) :: Omega
     !
     ! Beginning execution
@@ -148,17 +148,18 @@ CONTAINS
     ! Print ll_params file
     !
     CALL theta_to_param(theta,delta0,delta1_1,delta1_2,PhiQ_1,PhiQ_2, &
-        muQ_1,muQ_2,Gamm,Sigma,Sigma_1,Sigma_2,mu,Phi,Omega,r_inf)
+        muQ_1,muQ_2,Gamm,Sigma,Sigma_1,Sigma_2,mu,mu_1,mu_2,lambda_1,lambda_2, &
+        Phi,Phi_1,Phi_2,LLambda_1,LLambda_2,Omega,omega_dex,r_inf)
     WRITE (unit_ll_params,36) i_stime, objf, &
         r_inf, delta0, delta1_1, delta1_2, &
         (PhiQ_1(i,:), i = 1, num_XC(1)), (PhiQ_2(i,:), i = 1, num_XC(2)), &
         muQ_1, muQ_2, (Gamm(i,:), i = 1, num_X), &
-        mu, (Phi(i,:), i = 1, num_X), (Omega(i,i), i = 1, num_C*num_K), task
+        mu, (Phi(i,:), i = 1, num_X), (SQRT(Omega(i,i)), i = 1, num_C*num_K), SQRT(omega_dex), task
 36  FORMAT(I3, " # ", ES25.16E3, &
         " # ", <num_r_inf+num_C+num_XC(1)+num_XC(2)+ &
             num_XC(1)**2+num_XC(2)**2+ &
             num_XC(1)+num_XC(2)+num_X**2+ &
-            num_X+num_X**2+num_C*num_K>(ES25.16E3, 1X), " # ", A60)
+            num_X+num_X**2+num_C*num_K+1>(ES25.16E3, 1X), " # ", A60)
     !
     ! Ending execution and returning control
     !
@@ -197,6 +198,7 @@ CONTAINS
         <num_X>("                    mu(", I1, ") "), &
         <num_X**2>("                 Phi(", I1, ",", I1, ") "), &   
         <num_C>(<num_K>("            Omega", A3, "(", I1, ",", I1, ") ")), &
+        "                omega_dex ", &
         " # task")
     !
     ! Ending execution and returning control

@@ -10,7 +10,8 @@ CONTAINS
 ! %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 !
     SUBROUTINE theta_to_param ( theta, delta0, delta1_1, delta1_2, PhiQ_1, PhiQ_2, &
-        muQ_1, muQ_2, Gamm, Sigma, Sigma_1, Sigma_2, mu, Phi, Omega, r_inf )
+        muQ_1, muQ_2, Gamm, Sigma, Sigma_1, Sigma_2, mu, mu_1, mu_2, lambda_1, lambda_2, &
+        Phi, Phi_1, Phi_2, LLambda_1, LLambda_2, Omega, omega_dex, r_inf )
     !
     ! Transforms theta to real parameters 
     !
@@ -20,14 +21,14 @@ CONTAINS
     !
     REAL(8), INTENT(IN) :: theta(num_theta)
     REAL(8), INTENT(OUT) :: delta0(num_C)
-    REAL(8), INTENT(OUT) :: delta1_1(num_XC(1)), delta1_2(num_XC(2))
-    REAL(8), INTENT(OUT) :: PhiQ_1(num_XC(1),num_XC(2)), PhiQ_2(num_XC(2),num_XC(2))
-    REAL(8), INTENT(OUT) :: muQ_1(num_XC(1)), muQ_2(num_XC(2))
-    REAL(8), INTENT(OUT) :: Gamm(num_X,num_X)
-    REAL(8), INTENT(OUT) :: Sigma(num_X,num_X), Sigma_1(num_XC(1),num_XC(1)), Sigma_2(num_XC(2),num_XC(2))
+    REAL(8), DIMENSION(num_XC(1)), INTENT(OUT) :: delta1_1, mu_1, muQ_1, lambda_1
+    REAL(8), DIMENSION(num_XC(2)), INTENT(OUT) :: delta1_2, mu_2, muQ_2, lambda_2
     REAL(8), INTENT(OUT) :: mu(num_X)
-    REAL(8), INTENT(OUT) :: Phi(num_X,num_X)
+    REAL(8), DIMENSION(num_XC(1),num_XC(1)), INTENT(OUT) :: PhiQ_1, Sigma_1, Phi_1, LLambda_1
+    REAL(8), DIMENSION(num_XC(2),num_XC(2)), INTENT(OUT) :: PhiQ_2, Sigma_2, Phi_2, LLambda_2
+    REAL(8), DIMENSION(num_X,num_X), INTENT(OUT) :: Phi, Gamm, Sigma
     REAL(8), INTENT(OUT) :: Omega(num_C*num_K,num_C*num_K)
+    REAL(8), INTENT(OUT) :: omega_dex
     REAL(8), INTENT(OUT) :: r_inf
     !
     ! Declaring local variables
@@ -166,17 +167,21 @@ CONTAINS
         END DO
         !
     END DO
-    Sigma_1 = Sigma(sel_X(:num_XC(1),1),sel_X(:num_XC(1),1))
-    Sigma_2 = Sigma(sel_X(:num_XC(2),2),sel_X(:num_XC(2),2))
+    Sigma_1 = Sigma(sel_X1,sel_X1)
+    Sigma_2 = Sigma(sel_X2,sel_X2)
     !
-    ! mu
+    ! mu, mu_1, mu_2, lambda_1, lambda_2
     !
     il = iu
     IF (switch_mu1 .EQ. 1) mu = theta(il+1:il+num_X)
     IF (switch_mu2 .EQ. 1) mu = 0.d0
     iu = iu+num_mu
+    mu_1 = mu(sel_X1)
+    mu_2 = mu(sel_X2)
+    lambda_1 = mu_1-muQ_1
+    lambda_2 = mu_2-muQ_2
     !
-    ! Phi
+    ! Phi, Phi_1, Phi_2, LLambda_1, LLambda_2
     !
     il = iu
     IF (switch_Phi1 .EQ. 1) Phi = posdef_matrix(num_X,theta(il+1:il+num_X**2))
@@ -210,6 +215,10 @@ CONTAINS
         !
     END IF
     iu = iu+num_Phi
+    Phi_1 = Phi(sel_X1,sel_X1)
+    Phi_2 = Phi(sel_X2,sel_X2)
+    LLambda_1 = Phi_1-PhiQ_1
+    LLambda_2 = Phi_2-PhiQ_2
     !
     ! Omega
     !
@@ -221,12 +230,18 @@ CONTAINS
         DO ir = 1, num_K
             !
             j = (cc-1)*num_K+ir
-            Omega(j,j) = tmpOmega(cc)
+            Omega(j,j) = tmpOmega(cc)**2
             !
         END DO
         !
     END DO
     iu = iu+num_Omega
+    !
+    ! omega_dex
+    !
+    il = iu
+    omega_dex = EXP(theta(il+1))**2
+    iu = iu+num_omega_dex
     !
     ! r_inf
     !
@@ -245,7 +260,8 @@ CONTAINS
 ! %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 !
     SUBROUTINE Kalman_params ( delta0, delta1_1, delta1_2, PhiQ_1, PhiQ_2, muQ_1, muQ_2, &
-        Sigma_1, Sigma_2, avec_1, avec_2, Bmat_1, Bmat_2, sigmaQvec_1, sigmaQvec_2 )
+        Sigma_1, Sigma_2, mu, Phi, Sigma, &
+        avec_1, avec_2, Bmat_1, Bmat_2, sigmaQvec_1, sigmaQvec_2, muXI, PhiXI, SigmaXI )
     !
     ! Transforms real parameters to Kalman filter parameters 
     !
@@ -254,20 +270,38 @@ CONTAINS
     ! Declaring dummy variables
     !
     REAL(8), INTENT(IN) :: delta0(num_C)
-    REAL(8), INTENT(IN) :: delta1_1(num_XC(1)), delta1_2(num_XC(2))
-    REAL(8), INTENT(IN) :: muQ_1(num_XC(1)), muQ_2(num_XC(2))
-    REAL(8), INTENT(IN) :: PhiQ_1(num_XC(1),num_XC(1)), PhiQ_2(num_XC(2),num_XC(2))
-    REAL(8), INTENT(IN) :: Sigma_1(num_XC(1),num_XC(1)), Sigma_2(num_XC(2),num_XC(2))
+    REAL(8), DIMENSION(num_XC(1)), INTENT(IN) :: delta1_1, muQ_1
+    REAL(8), DIMENSION(num_XC(2)), INTENT(IN) :: delta1_2, muQ_2
+    REAL(8), DIMENSION(num_XC(1),num_XC(1)), INTENT(IN) :: PhiQ_1, Sigma_1
+    REAL(8), DIMENSION(num_XC(2),num_XC(2)), INTENT(IN) :: PhiQ_2, Sigma_2
+    REAL(8), INTENT(IN) :: mu(num_X)
+    REAL(8), DIMENSION(num_X,num_X), INTENT(IN) :: Phi, Sigma
     REAL(8), INTENT(OUT) :: avec_1(num_K), avec_2(num_K)
     REAL(8), INTENT(OUT) :: Bmat_1(num_XC(1),num_K), Bmat_2(num_XC(2),num_K)
     REAL(8), INTENT(OUT) :: sigmaQvec_1(num_K), sigmaQvec_2(num_K)
+    REAL(8), INTENT(OUT) :: muXI(num_XI)
+    REAL(8), DIMENSION(num_XI,num_XI), INTENT(OUT) :: PhiXI, SigmaXI
     ! 
     ! Beginning execution
+    !
+    ! Measurement equation parameters
     !
     CALL Kalman_params_absigmaQvec(num_XC(1),delta0(1),delta1_1, &
         PhiQ_1,muQ_1,Sigma_1,avec_1,Bmat_1,sigmaQvec_1)
     CALL Kalman_params_absigmaQvec(num_XC(2),delta0(2),delta1_2, &
         PhiQ_2,muQ_2,Sigma_2,avec_2,Bmat_2,sigmaQvec_2)
+    !
+    ! Transition equation parameters
+    !
+    muXI(:num_X) = mu
+    muXI(num_X+1:) = 0.d0
+    !
+    PhiXI(:num_X,:num_X) = Phi
+    PhiXI(num_X+1:,:num_X) = eyeX
+    PhiXI(:,num_X+1:) = 0.d0
+    !
+    SigmaXI = 0.d0
+    SigmaXI(:num_X,:num_X) = Sigma    
     !
     ! End execution and returning control
     !
@@ -345,7 +379,7 @@ CONTAINS
             DO ir = 1, n
                 aveccc(iTau) = aveccc(iTau)+sum_b(ir)*muQcc(ir)
                 DO ic = 1, n
-                    aveccc(iTau) = aveccc(iTau)-0.5d0*sum_b(ir)*Sigmacc(ir,ic)*sum_b(ic)/1.2d3
+                    aveccc(iTau) = aveccc(iTau)-0.5d0*sum_b(ir)*Sigmacc(ir,ic)*sum_b(ic)
                 END DO
             END DO
             sigmaQveccc(iTau) = sigmaQ2
@@ -364,9 +398,9 @@ CONTAINS
 ! %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 !
     SUBROUTINE Kalman_fhat ( r_inf, avec_1, avec_2, Bmat_1, Bmat_2, sigmaQvec_1, sigmaQvec_2, &
-        xtt, hvec, Hmat )
+        xitt, hvec, Hmat )
     !
-    ! Computes fitted values and Jacobian of fitted values w.r.t. states
+    ! Computes fitted yields and Jacobian of fitted yields w.r.t. states
     !
     IMPLICIT NONE
     !
@@ -375,9 +409,9 @@ CONTAINS
     REAL(8), INTENT(IN) :: r_inf
     REAL(8), DIMENSION(num_K), INTENT(IN) :: avec_1, avec_2, sigmaQvec_1, sigmaQvec_2
     REAL(8), INTENT(IN) :: Bmat_1(num_XC(1),num_K), Bmat_2(num_XC(2),num_K)
-    REAL(8), INTENT(IN) :: xtt(num_X)                   ! Factors
+    REAL(8), INTENT(IN) :: xitt(num_XI)                 ! Factors
     REAL(8), INTENT(OUT) :: hvec(num_C*num_K)           ! Fitted values
-    REAL(8), INTENT(OUT) :: Hmat(num_X,num_C*num_K)     ! Jacobian of fitted values w.r.t. states
+    REAL(8), INTENT(OUT) :: Hmat(num_XI,num_C*num_K)     ! Jacobian of fitted values w.r.t. states
     !
     ! Declaring local variables
     !
@@ -393,13 +427,13 @@ CONTAINS
     !
     IF (switch_gatsm .EQ. 1) THEN
         !
-        CALL Kalman_fhat_gatsm(num_XC(1),avec_1,Bmat_1,xtt(sel_X(:num_XC(1),1)),hvec_c,Hmat_1)
+        CALL Kalman_fhat_gatsm(num_XC(1),avec_1,Bmat_1,xitt(sel_X1),hvec_c,Hmat_1)
         hvec(:num_K) = hvec_c
-        Hmat(sel_X(:num_XC(1),1),:num_K) = Hmat_1
+        Hmat(sel_X1,:num_K) = Hmat_1
         !
-        CALL Kalman_fhat_gatsm(num_XC(2),avec_2,Bmat_2,xtt(sel_X(:num_XC(2),2)),hvec_c,Hmat_2)
+        CALL Kalman_fhat_gatsm(num_XC(2),avec_2,Bmat_2,xitt(sel_X2),hvec_c,Hmat_2)
         hvec(num_K+1:2*num_K) = hvec_c
-        Hmat(sel_X(:num_XC(2),2),num_K+1:2*num_K) = Hmat_2
+        Hmat(sel_X2,num_K+1:2*num_K) = Hmat_2
         !
     END IF
     !
@@ -407,13 +441,13 @@ CONTAINS
     !
     IF (switch_sr .EQ. 1) THEN
         !
-        CALL Kalman_fhat_sr(num_XC(1),r_inf,avec_1,Bmat_1,sigmaQvec_1,xtt(sel_X(:num_XC(1),1)),hvec_c,Hmat_1)
+        CALL Kalman_fhat_sr(num_XC(1),r_inf,avec_1,Bmat_1,sigmaQvec_1,xitt(sel_X1),hvec_c,Hmat_1)
         hvec(:num_K) = hvec_c
-        Hmat(sel_X(:num_XC(1),1),:num_K) = Hmat_1
+        Hmat(sel_X1,:num_K) = Hmat_1
         !
-        CALL Kalman_fhat_sr(num_XC(2),r_inf,avec_2,Bmat_2,sigmaQvec_2,xtt(sel_X(:num_XC(2),2)),hvec_c,Hmat_2)
+        CALL Kalman_fhat_sr(num_XC(2),r_inf,avec_2,Bmat_2,sigmaQvec_2,xitt(sel_X2),hvec_c,Hmat_2)
         hvec(num_K+1:2*num_K) = hvec_c
-        Hmat(sel_X(:num_XC(2),2),num_K+1:2*num_K) = Hmat_2
+        Hmat(sel_X2,num_K+1:2*num_K) = Hmat_2
         !
     END IF
     !
@@ -425,7 +459,7 @@ CONTAINS
 !
     SUBROUTINE Kalman_fhat_gatsm ( n, avec, Bmat, xtt, hvec, Hmat )
     !
-    ! Computes fitted values and Jacobian of fitted values w.r.t. states in the GATSM model
+    ! Computes fitted yields and Jacobian of fitted yields w.r.t. states in the GATSM model
     !
     IMPLICIT NONE
     !
@@ -435,8 +469,8 @@ CONTAINS
     REAL(8), INTENT(IN) :: avec(num_K)
     REAL(8), INTENT(IN) :: Bmat(n,num_K)
     REAL(8), INTENT(IN) :: xtt(n)
-    REAL(8), INTENT(OUT) :: hvec(num_K)                 ! Fitted values
-    REAL(8), INTENT(OUT) :: Hmat(n,num_K)               ! Jacobian of fitted values w.r.t. states
+    REAL(8), INTENT(OUT) :: hvec(num_K)                 ! Fitted yields
+    REAL(8), INTENT(OUT) :: Hmat(n,num_K)               ! Jacobian of fitted yields w.r.t. states
     !
     ! Declaring local variables
     !
@@ -466,7 +500,7 @@ CONTAINS
 !
     SUBROUTINE Kalman_fhat_sr ( n, r_inf, avec, Bmat, sigmaQvec, xtt, hvec, Hmat )
     !
-    ! Computes fitted values and Jacobian of fitted values w.r.t. states in the SR-GATSM model
+    ! Computes fitted yields and Jacobian of fitted yields w.r.t. states in the SR-GATSM model
     !
     IMPLICIT NONE
     !
@@ -478,8 +512,8 @@ CONTAINS
     REAL(8), INTENT(IN) :: Bmat(n,num_K)
     REAL(8), INTENT(IN) :: sigmaQvec(num_K)
     REAL(8), INTENT(IN) :: xtt(n)
-    REAL(8), INTENT(OUT) :: hvec(num_K)                 ! Fitted values
-    REAL(8), INTENT(OUT) :: Hmat(n,num_K)               ! Jacobian of fitted values w.r.t. states
+    REAL(8), INTENT(OUT) :: hvec(num_K)                 ! Fitted yields
+    REAL(8), INTENT(OUT) :: Hmat(n,num_K)               ! Jacobian of fitted yields w.r.t. states
     !
     ! Declaring local variables
     !
@@ -518,7 +552,165 @@ CONTAINS
 !
 ! %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 !
-    SUBROUTINE Kalman_vec ( theta, objf_vec, xf, xu, Pf, Pu )
+    SUBROUTINE Kalman_ehat ( r_inf, delta0, delta1_1, delta1_2, lambda_1, lambda_2, &
+        LLambda_1, LLambda_2, mu_1, mu_2, Phi_1, Phi_2, &
+        xitt, kvec, Kmat, lambdattlag_1, eps_1, lambdattlag_2, eps_2 )
+    !
+    ! Computes fitted depreciation and Jacobian of fitted depreciation w.r.t. states
+    !
+    IMPLICIT NONE
+    !
+    ! Declaring dummy variables
+    !
+    REAL(8), INTENT(IN) :: r_inf
+    REAL(8), INTENT(IN) :: delta0(num_C)
+    REAL(8), DIMENSION(num_XC(1)), INTENT(IN) :: delta1_1, mu_1, lambda_1
+    REAL(8), DIMENSION(num_XC(2)), INTENT(IN) :: delta1_2, mu_2, lambda_2
+    REAL(8), DIMENSION(num_XC(1),num_XC(1)), INTENT(IN) :: Phi_1, LLambda_1
+    REAL(8), DIMENSION(num_XC(2),num_XC(2)), INTENT(IN) :: Phi_2, LLambda_2
+    REAL(8), INTENT(IN) :: xitt(num_XI)                         ! Factors
+    REAL(8), INTENT(OUT) :: kvec                                ! Fitted depreciation
+    REAL(8), INTENT(OUT) :: Kmat(num_XI)                        ! Jacobian of fitted depreciation w.r.t. states
+    REAL(8), DIMENSION(num_XC(1)), INTENT(OUT) ::  lambdattlag_1, eps_1
+    REAL(8), DIMENSION(num_XC(2)), INTENT(OUT) ::  lambdattlag_2, eps_2
+    !
+    ! Declaring local variables
+    !
+    REAL(8), DIMENSION(num_X) :: xtt, xttlag
+    REAL(8), DIMENSION(num_XC(1)) :: xtt_1, xttlag_1, dr_1
+    REAL(8), DIMENSION(num_XC(2)) :: xtt_2, xttlag_2, dr_2
+    REAL(8) :: r_1, r_2                 ! REMEMBER: 1 IS US, 2 IS UK !!!
+    INTEGER :: ir, ic
+    REAL(8) :: Kmat_tmp(num_X,num_C)
+    ! 
+    ! Beginning execution
+    !
+    kvec = 0.d0
+    Kmat = 0.d0
+    !
+    ! Factors
+    !
+    ! tt
+    xtt = xitt(:num_X)
+    xtt_1 = xtt(sel_X1)
+    xtt_2 = xtt(sel_X2)
+    !
+    ! tt-1
+    xttlag = xitt(num_X+1:)
+    xttlag_1 = xttlag(sel_X1)
+    xttlag_2 = xttlag(sel_X2)
+    !
+    ! Short rates in a GATSM model
+    !
+    r_1 = delta0(1)+SUM(delta1_1*xttlag_1)
+    r_2 = delta0(2)+SUM(delta1_2*xttlag_2)
+    dr_1 = delta1_1
+    dr_2 = delta1_2
+    !
+    ! Short rates in a SR-GATSM model
+    !
+    IF (switch_sr .EQ. 1) THEN
+        !
+        IF (r_1 .LT. r_inf) THEN
+            !
+            r_1 = r_inf
+            dr_1 = 0.d0
+            !
+        END IF
+        IF (r_2 .LT. r_inf) THEN
+            !
+            r_2 = r_inf
+            dr_2 = 0.d0
+            !
+        END IF
+        !
+    END IF
+    !
+    ! Risk premia and factors' innovations
+    ! BEWARE: THE INNOVATIONS ARE CORRECT ONLY IF GAMMA = IDENTITY MATRIX !!!
+    !
+    DO ir = 1, num_XC(1)
+        !
+        lambdattlag_1(ir) = lambda_1(ir)
+        eps_1(ir) = xtt_1(ir)-mu_1(ir)
+        DO ic = 1, num_XC(1)
+            !
+            lambdattlag_1(ir) = lambdattlag_1(ir)+LLambda_1(ir,ic)*xttlag_1(ic)
+            eps_1(ir) = eps_1(ir)-Phi_1(ir,ic)*xttlag_1(ic)
+            !
+        END DO
+        !
+    END DO
+    DO ir = 1, num_XC(2)
+        !
+        lambdattlag_2(ir) = lambda_2(ir)
+        eps_2(ir) = xtt_2(ir)
+        DO ic = 1, num_XC(2)
+            !
+            lambdattlag_2(ir) = lambdattlag_2(ir)+LLambda_2(ir,ic)*xttlag_2(ic)
+            eps_2(ir) = eps_2(ir)-Phi_2(ir,ic)*xttlag_2(ic)
+            !
+        END DO
+        !
+    END DO
+    !
+    ! kvec
+    !
+    kvec = r_1-r_2+ &
+        0.5d0*(SUM(lambdattlag_1**2)-SUM(lambdattlag_2**2))+ &
+        (SUM(lambdattlag_1*eps_1)-SUM(lambdattlag_2*eps_2))
+    !
+    ! Kmat
+    !
+    ! xtt
+    Kmat_tmp = 0.d0
+    DO ir = 1, num_XC(1)
+        !
+        Kmat_tmp(sel_X1(ir),1) = lambdattlag_1(ir)
+        !
+    END DO
+    DO ir = 1, num_XC(2)
+        !
+        Kmat_tmp(sel_X2(ir),2) = lambdattlag_2(ir)
+        !
+    END DO
+    Kmat(:num_X) = Kmat_tmp(:,1)-Kmat_tmp(:,2)
+    !
+    ! xttlag
+    Kmat_tmp = 0.d0
+    DO ir = 1, num_XC(1)
+        !
+        Kmat_tmp(sel_X1(ir),1) = dr_1(ir)
+        DO ic = 1, num_XC(1)
+            !
+            Kmat_tmp(sel_X1(ir),1) = Kmat_tmp(sel_X1(ir),1)+ &
+                LLambda_1(ic,ir)*(lambdattlag_1(ic)+eps_1(ic))- &
+                Phi_1(ic,ir)*lambdattlag_1(ic)
+            !
+        END DO
+        !
+    END DO
+    DO ir = 1, num_XC(2)
+        !
+        Kmat_tmp(sel_X2(ir),2) = dr_2(ir)
+        DO ic = 1, num_XC(2)
+            !
+            Kmat_tmp(sel_X2(ir),2) = Kmat_tmp(sel_X2(ir),2)+ &
+                LLambda_2(ic,ir)*(lambdattlag_2(ic)+eps_2(ic))- &
+                Phi_2(ic,ir)*lambdattlag_2(ic)
+            !
+        END DO
+        !
+    END DO
+    Kmat(num_X+1:) = Kmat_tmp(:,1)-Kmat_tmp(:,2)
+    !
+    ! End execution and returning control
+    !
+    END SUBROUTINE Kalman_ehat
+!
+! %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+!
+    SUBROUTINE Kalman_vec ( theta, objf_vec, xif, xiu, Pf, Pu )
     !
     ! Modified Kalman filter - loglikelihood contributions
     !
@@ -528,45 +720,55 @@ CONTAINS
     !
     REAL(8), INTENT(IN) :: theta(num_theta)
     REAL(8), INTENT(OUT) :: objf_vec(num_T)
-    REAL(8), INTENT(OUT) :: xf(num_X,num_T)
-    REAL(8), INTENT(OUT) :: xu(num_X,num_T)
-    REAL(8), INTENT(OUT) :: Pf(num_X,num_X,num_T)
-    REAL(8), INTENT(OUT) :: Pu(num_X,num_X,num_T)
+    REAL(8), INTENT(OUT) :: xif(num_XI,num_T)
+    REAL(8), INTENT(OUT) :: xiu(num_XI,num_T)
+    REAL(8), INTENT(OUT) :: Pf(num_XI,num_XI,num_T)
+    REAL(8), INTENT(OUT) :: Pu(num_XI,num_XI,num_T)
     !
     ! Declaring local variables
     !
     INTEGER :: tt, ktt, info, ir, ic, h, k, il, iu, jl, ju, i, j
-    INTEGER, DIMENSION(num_C*num_K) :: Tautt, ipiv2K
-    INTEGER :: ipivN(num_X), ipivNq(num_X**2)
-    REAL(8) :: delta0(num_C), r_inf, tmp, log_det_Ltt, logLtt, logL(num_T)
-    REAL(8), DIMENSION(num_C*num_K) :: hvec, hvecstar, Fstar, ustar
-    REAL(8), DIMENSION(num_C*num_K,num_C*num_K) :: Omega, Omegastar, Ltt, triLtt
-    REAL(8), DIMENSION(num_X) :: mu, X0
-    REAL(8), DIMENSION(num_XC(1)) :: muQ_1, delta1_1
-    REAL(8), DIMENSION(num_XC(2)) :: muQ_2, delta1_2
-    REAL(8), DIMENSION(num_X,num_X) :: Gamm, Sigma, Phi, loc_A, P0
-    REAL(8), DIMENSION(num_XC(1),num_XC(1)) :: PhiQ_1, Sigma_1
-    REAL(8), DIMENSION(num_XC(2),num_XC(2)) :: PhiQ_2, Sigma_2
-    REAL(8), DIMENSION(num_X,num_C*num_K) :: Hmat, Hmatstar, Qtt, Gtt
-    REAL(8) :: Qttprime(num_C*num_K,num_X), z_i(num_C*num_K,1)
-    REAL(8) :: loc_A2(num_X**2,num_X**2), loc_B(num_X,1), loc_B2(num_X**2,1)
+    INTEGER, DIMENSION(num_C*num_K) :: Tautt
+    INTEGER, DIMENSION(num_Y) :: ipiv2K
+    INTEGER :: ipivN(num_XI), ipivNq(num_XI**2)
+    REAL(8) :: delta0(num_C), r_inf, tmp, log_det_Ltt, logLtt, logL(num_T), omega_dex
+    REAL(8), DIMENSION(num_X) :: mu
+    REAL(8), DIMENSION(num_X,num_X) :: Gamm, Sigma, Phi
+    REAL(8), DIMENSION(num_XI,num_C*num_K) :: Hmat
+    REAL(8), DIMENSION(num_XC(1)) :: mu_1, muQ_1, delta1_1, lambda_1, lambdattlag_1, eps_1
+    REAL(8), DIMENSION(num_XC(2)) :: mu_2, muQ_2, delta1_2, lambda_2, lambdattlag_2, eps_2
+    REAL(8), DIMENSION(num_XC(1),num_XC(1)) :: PhiQ_1, Sigma_1, Phi_1, LLambda_1
+    REAL(8), DIMENSION(num_XC(2),num_XC(2)) :: PhiQ_2, Sigma_2, Phi_2, LLambda_2
+    REAL(8), DIMENSION(num_XI) :: muXI, XI0
+    REAL(8), DIMENSION(num_XI,num_XI) :: PhiXI, SigmaXI, P0, loc_A
+    REAL(8), DIMENSION(num_C*num_K) :: hvec
+    REAL(8), DIMENSION(num_C*num_K,num_C*num_K) :: Omega
+    REAL(8), DIMENSION(num_Y) :: ustar, ystar, mvecstar
+    REAL(8), DIMENSION(num_XI,num_Y) :: Mmatstar, Qtt, Gtt
+    REAL(8), DIMENSION(num_Y,num_Y) :: Omegastar, Ltt, triLtt
+    REAL(8) :: Qttprime(num_Y,num_XI), z_i(num_Y,1)
+    REAL(8) :: loc_A2(num_XI**2,num_XI**2), loc_B(num_XI,1), loc_B2(num_XI**2,1)
     INTEGER :: lwork
     REAL(8) :: wr(num_X), wi(num_X), Phi_tmp(num_X,num_X), vl(num_X,num_X), vr(num_X,num_X), work(10*num_X)
     REAL(8), DIMENSION(num_K) :: avec_1, avec_2, sigmaQvec_1, sigmaQvec_2
     REAL(8), DIMENSION(num_XC(1),num_K) :: Bmat_1
     REAL(8), DIMENSION(num_XC(2),num_K) :: Bmat_2
+    REAL(8) :: kvec                                ! Fitted depreciation
+    REAL(8) :: Kmat(num_XI)                        ! Jacobian of fitted depreciation w.r.t. states
     !
     ! Beginning execution
     !
     ! Extracting model parameters
     !
     CALL theta_to_param(theta,delta0,delta1_1,delta1_2,PhiQ_1,PhiQ_2,muQ_1,muQ_2, &
-        Gamm,Sigma,Sigma_1,Sigma_2,mu,Phi,Omega,r_inf)
+        Gamm,Sigma,Sigma_1,Sigma_2,mu,mu_1,mu_2,lambda_1,lambda_2, &
+        Phi,Phi_1,Phi_2,LLambda_1,LLambda_2,Omega,omega_dex,r_inf)
     !
     ! Computing Kalman filter parameters
     !
     CALL Kalman_params(delta0,delta1_1,delta1_2,PhiQ_1,PhiQ_2,muQ_1,muQ_2, &
-        Sigma_1,Sigma_2,avec_1,avec_2,Bmat_1,Bmat_2,sigmaQvec_1,sigmaQvec_2)
+        Sigma_1,Sigma_2,mu,Phi,Sigma, &
+        avec_1,avec_2,Bmat_1,Bmat_2,sigmaQvec_1,sigmaQvec_2,muXI,PhiXI,SigmaXI)
     !
     ! Initial conditions
     !
@@ -574,19 +776,19 @@ CONTAINS
         !
         ! X0 = 0, P0 = 100*Id, as in Wu-Xia (2014)
         !
-        X0 = 0.d0
-        P0 = 1.d2*eyeN
+        XI0 = 0.d0
+        P0 = 1.d2*eyeXI
         !
     ELSE IF (switch_init_Kalman .EQ. 2) THEN
         !
         ! X0 = long run mean
         ! P0 = P0 = 100*Id
         !
-        loc_A = eyeN-Phi
-        loc_B(:,1) = mu
-        CALL DGESV(num_X,1,loc_A,num_X,ipivN,loc_B,num_X,info)
-        X0 = loc_B(:,1)
-        P0 = 1.d2*eyeN
+        loc_A = eyeXI-PhiXI
+        loc_B(:,1) = muXI
+        CALL DGESV(num_XI,1,loc_A,num_XI,ipivN,loc_B,num_XI,info)
+        XI0 = loc_B(:,1)
+        P0 = 1.d2*eyeXI
         !
     ELSE IF (switch_init_Kalman .EQ. 3) THEN
         !
@@ -594,29 +796,29 @@ CONTAINS
         ! P0 = long run variance
         ! (this does not work if Phi has eigenvalues larger than 1 in modulus)
         !
-        loc_A = eyeN-Phi
-        loc_B(:,1) = mu
-        CALL DGESV(num_X,1,loc_A,num_X,ipivN,loc_B,num_X,info)
-        X0 = loc_B(:,1)
+        loc_A = eyeXI-PhiXI
+        loc_B(:,1) = muXI
+        CALL DGESV(num_XI,1,loc_A,num_XI,ipivN,loc_B,num_XI,info)
+        XI0 = loc_B(:,1)
         !
-        loc_A2 = eyeN2
+        loc_A2 = eyeXI2
         loc_B2 = 0.d0
         h = 0
-        DO i = 1, num_X
-            DO j = 1, num_X
-                il = (i-1)*num_X+1
-                iu = i*num_X
-                jl = (j-1)*num_X+1
-                ju = j*num_X
-                loc_A2(il:iu,jl:ju) = eyeN2(il:iu,jl:ju)-Phi(i,j)*Phi
+        DO i = 1, num_XI
+            DO j = 1, num_XI
+                il = (i-1)*num_XI+1
+                iu = i*num_XI
+                jl = (j-1)*num_XI+1
+                ju = j*num_XI
+                loc_A2(il:iu,jl:ju) = eyeXI2(il:iu,jl:ju)-PhiXI(i,j)*PhiXI
                 h = h+1
-                IF (i .EQ. j) loc_B2(h,1) = Sigma(i,i)
+                IF (i .EQ. j) loc_B2(h,1) = SigmaXI(i,i)
             END DO
         END DO
-        CALL DGESV(num_X**2,1,loc_A2,num_X**2,ipivNq,loc_B2,num_X**2,info)
+        CALL DGESV(num_XI**2,1,loc_A2,num_XI**2,ipivNq,loc_B2,num_XI**2,info)
         h = 0
-        DO j = 1, num_X
-            DO i = 1, num_X
+        DO j = 1, num_XI
+            DO i = 1, num_XI
                 h = h+1
                 P0(i,j) = loc_B2(h,1)
             END DO
@@ -627,10 +829,10 @@ CONTAINS
     ! Starting the recursion
     ! Unconditional mean and variance of state variable vector
     ! NB: 
-    !       xf = \hat x_{t|t-1},    Pf = P_{t|t-1}
-    !       xu = \hat x_{t|t},      Pu = P_{t|t}
+    !       xif = \hat \xi_{t|t-1},    Pf = P_{t|t-1}
+    !       xiu = \hat \xi_{t|t},      Pu = P_{t|t}
     !
-    xf(:,1) = X0
+    xif(:,1) = XI0
     Pf(:,:,1) = P0
     !
     ! Kalman filter
@@ -642,7 +844,10 @@ CONTAINS
         ! Computing vector of predicted yields (hvec) and slope matrix (Hmat)
         !
         CALL Kalman_fhat(r_inf,avec_1,avec_2,Bmat_1,Bmat_2,sigmaQvec_1,sigmaQvec_2, &
-            xf(:,tt),hvec,Hmat)
+            xif(:,tt),hvec,Hmat)
+        CALL Kalman_ehat(r_inf,delta0,delta1_1,delta1_2,lambda_1,lambda_2, &
+            LLambda_1,LLambda_2,mu_1,mu_2,Phi_1,Phi_2, &
+            xif(:,tt),kvec,Kmat,lambdattlag_1,eps_1,lambdattlag_2,eps_2)    
         !
         ! Observations for time t
         !
@@ -651,46 +856,50 @@ CONTAINS
         !
         ! Selected vectors and matrices
         !
-        Fstar = 0.d0
-        Fstar(:ktt) = F(Tautt(:ktt),tt)
+        ystar = 0.d0
+        ystar(:ktt) = F(Tautt(:ktt),tt)
+        ystar(ktt+1) = dexrate(tt)
         !
-        hvecstar = 0.d0
-        hvecstar(:ktt) = hvec(Tautt(:ktt))
+        mvecstar = 0.d0
+        mvecstar(:ktt) = hvec(Tautt(:ktt))
+        mvecstar(ktt+1) = kvec
         !
-        Hmatstar = 0.d0
-        Hmatstar(:,:ktt) = Hmat(:,Tautt(:ktt))
+        Mmatstar = 0.d0
+        Mmatstar(:num_X,:ktt) = Hmat(:,Tautt(:ktt))
+        Mmatstar(:,ktt+1) = Kmat
         !
         Omegastar = 0.d0
         Omegastar(:ktt,:ktt) = Omega(Tautt(:ktt),Tautt(:ktt))
+        Omegastar(ktt+1,ktt+1) = omega_dex
         !
-        ! u = F - hvec
+        ! u = [F - hvec, dexrate - kvec]
         !
         ustar = 0.d0
-        ustar(:ktt) = Fstar(:ktt)-hvecstar(:ktt)
+        ustar(:ktt+1) = ystar(:ktt)-mvecstar(:ktt)
         !
-        ! Ltt = H'*Pf*H + Omega
+        ! Ltt = Mmatstar'*Pf*Mmatstar + Omegastar
         !
-        Ltt(:ktt,:ktt) = Omegastar
-        DO ir = 1, ktt
-            DO ic = 1, ktt
-                DO h = 1, num_X
-                    DO k = 1, num_X
-                        Ltt(ir,ic) = Ltt(ir,ic)+Hmatstar(h,ir)*Hmatstar(k,ic)*Pf(h,k,tt)
+        Ltt(:ktt+1,:ktt+1) = Omegastar(:ktt+1,:ktt+1)
+        DO ir = 1, ktt+1
+            DO ic = 1, ktt+1
+                DO h = 1, num_XI
+                    DO k = 1, num_XI
+                        Ltt(ir,ic) = Ltt(ir,ic)+Mmatstar(h,ir)*Mmatstar(k,ic)*Pf(h,k,tt)
                     END DO
                 END DO
             END DO
         END DO
         !
-        ! Choleski decomposition of Ltt(:ktt,:ktt)
+        ! Choleski decomposition of Ltt(:ktt+1,:ktt+1)
         !
         triLtt = Ltt
-        DO ic = 1, ktt
+        DO ic = 1, ktt+1
             tmp = 0.d0
             DO h = 1, ic-1
                 tmp = tmp+triLtt(ic,h)**2
             END DO
             triLtt(ic,ic) = SQRT(triLtt(ic,ic)-tmp)
-            DO ir = ic+1, ktt
+            DO ir = ic+1, ktt+1
                 tmp = 0.d0
                 DO h = 1, ic-1
                     tmp = tmp+triLtt(ir,h)*triLtt(ic,h)
@@ -698,31 +907,31 @@ CONTAINS
                 triLtt(ir,ic) = (triLtt(ir,ic)-tmp)/triLtt(ic,ic)
             END DO
         END DO
-        DO ic = 2, ktt
+        DO ic = 2, ktt+1
             triLtt(1:ic-1,ic) = 0.d0
         END DO
         !
         ! Loglikelihood contribution
         !
         log_det_Ltt = 0.d0
-        DO h = 1, ktt
+        DO h = 1, ktt+1
             log_det_Ltt = log_det_Ltt+2.d0*LOG(triLtt(h,h))
         END DO
         !
         z_i(:,1) = ustar
-        CALL DGESV(ktt,1,triLtt(:ktt,:ktt),ktt,ipiv2K(:ktt),z_i(:ktt,1),ktt,info)
-        logLtt = -0.5d0*(ktt*LOG(2.d0*pi)+log_det_Ltt+SUM(z_i**2))
+        CALL DGESV(ktt+1,1,triLtt(:ktt+1,:ktt+1),ktt+1,ipiv2K(:ktt+1),z_i(:ktt+1,1),ktt+1,info)
+        logLtt = -0.5d0*((ktt+1)*LOG(2.d0*pi)+log_det_Ltt+SUM(z_i**2))
         logL(tt) = logLtt
         !
         ! Update step
         !
-        ! Qtt = Pf*Hmat
+        ! Qtt = Pf*Mmatstar
         !
         Qtt = 0.d0
-        DO ir = 1, num_X
-            DO ic = 1, ktt
-                DO h = 1, num_X
-                    Qtt(ir,ic) = Qtt(ir,ic)+Pf(ir,h,tt)*Hmatstar(h,ic)
+        DO ir = 1, num_XI
+            DO ic = 1, ktt+1
+                DO h = 1, num_XI
+                    Qtt(ir,ic) = Qtt(ir,ic)+Pf(ir,h,tt)*Mmatstar(h,ic)
                 END DO
             END DO
         END DO
@@ -730,42 +939,44 @@ CONTAINS
         ! Qttprime = Qtt'
         !
         Qttprime = 0.d0
-        DO ir = 1, num_X
-            DO ic = 1, ktt
+        DO ir = 1, num_XI
+            DO ic = 1, ktt+1
                 Qttprime(ic,ir) = Qtt(ir,ic)
             END DO
         END DO
         !
-        ! Solve Ltt(:ktt,:ktt) Gtt(:,:ktt)' = Qttprime(:ktt,:) w.r.t Gtt(:,:ktt)'
+        ! Solve Ltt(:ktt+1,:ktt+1) Gtt(:,:ktt+1)' = Qttprime(:ktt+1,:) w.r.t Gtt(:,:ktt+1)'
         !
-        CALL DGESV(ktt,num_X,Ltt(:ktt,:ktt),ktt,ipiv2K(:ktt),Qttprime(:ktt,:),ktt,info)
+        CALL DGESV(ktt+1,num_XI,Ltt(:ktt+1,:ktt+1),ktt+1,ipiv2K(:ktt+1),Qttprime(:ktt+1,:),ktt+1,info)
         !
         Gtt = 0.d0
-        DO ir = 1, ktt
-            DO ic = 1, num_X
+        DO ir = 1, ktt+1
+            DO ic = 1, num_XI
                 Gtt(ic,ir) = Qttprime(ir,ic)
             END DO
         END DO
         !
-        xu(:,tt) = xf(:,tt)
-        DO ir = 1, num_X
-            DO h = 1, ktt
-                xu(ir,tt) = xu(ir,tt)+Gtt(ir,h)*ustar(h)
+        ! Update step
+        !
+        xiu(:,tt) = xif(:,tt)
+        DO ir = 1, num_XI
+            DO h = 1, ktt+1
+                xiu(ir,tt) = xiu(ir,tt)+Gtt(ir,h)*ustar(h)
             END DO
         END DO
         !
         Pu(:,:,tt) = Pf(:,:,tt)
-        DO ir = 1, num_X
+        DO ir = 1, num_XI
             DO ic = 1, ir
-                DO h = 1, ktt
-                    DO k = 1, num_X
-                        Pu(ir,ic,tt) = Pu(ir,ic,tt)-Gtt(ir,h)*Hmatstar(k,h)*Pf(k,ic,tt)
+                DO h = 1, ktt+1
+                    DO k = 1, num_XI
+                        Pu(ir,ic,tt) = Pu(ir,ic,tt)-Gtt(ir,h)*Mmatstar(k,h)*Pf(k,ic,tt)
                     END DO
                 END DO
             END DO
         END DO
-        DO ir = 1, num_X-1
-            DO ic = ir+1, num_X
+        DO ir = 1, num_XI-1
+            DO ic = ir+1, num_XI
                 Pu(ir,ic,tt) = Pu(ic,ir,tt)
             END DO
         END DO
@@ -774,25 +985,25 @@ CONTAINS
         !
         IF (tt .LT. num_T) THEN
             !
-            xf(:,tt+1) = mu
-            DO ir = 1, num_X
-                DO h = 1, num_X
-                    xf(ir,tt+1) = xf(ir,tt+1)+Phi(ir,h)*xu(h,tt)
+            xif(:,tt+1) = muXI
+            DO ir = 1, num_XI
+                DO h = 1, num_XI
+                    xif(ir,tt+1) = xif(ir,tt+1)+PhiXI(ir,h)*xiu(h,tt)
                 END DO
             END DO
             !
-            Pf(:,:,tt+1) = Sigma
-            DO ir = 1, num_X
+            Pf(:,:,tt+1) = SigmaXI
+            DO ir = 1, num_XI
                 DO ic = 1, ir
-                    DO h = 1, num_X
-                        DO k = 1, num_X
-                            Pf(ir,ic,tt+1) = Pf(ir,ic,tt+1)+Phi(ir,h)*Pu(h,k,tt)*Phi(ic,k)
+                    DO h = 1, num_XI
+                        DO k = 1, num_XI
+                            Pf(ir,ic,tt+1) = Pf(ir,ic,tt+1)+PhiXI(ir,h)*Pu(h,k,tt)*PhiXI(ic,k)
                         END DO
                     END DO
                 END DO
             END DO
-            DO ir = 1, num_X-1
-                DO ic = ir+1, num_X
+            DO ir = 1, num_XI-1
+                DO ic = ir+1, num_XI
                     Pf(ir,ic,tt+1) = Pf(ic,ir,tt+1)
                 END DO
             END DO
@@ -810,7 +1021,7 @@ CONTAINS
 !
 ! %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 !
-    SUBROUTINE ll ( theta, objf, xf, xu, Pf, Pu )
+    SUBROUTINE ll ( theta, objf, xif, xiu, Pf, Pu )
     !
     ! Modified Kalman filter - loglikelihood contributions
     !
@@ -820,10 +1031,10 @@ CONTAINS
     !
     REAL(8), INTENT(IN) :: theta(num_theta)
     REAL(8), INTENT(OUT) :: objf
-    REAL(8), INTENT(OUT) :: xf(num_X,num_T)
-    REAL(8), INTENT(OUT) :: xu(num_X,num_T)
-    REAL(8), INTENT(OUT) :: Pf(num_X,num_X,num_T)
-    REAL(8), INTENT(OUT) :: Pu(num_X,num_X,num_T)
+    REAL(8), INTENT(OUT) :: xif(num_XI,num_T)
+    REAL(8), INTENT(OUT) :: xiu(num_XI,num_T)
+    REAL(8), INTENT(OUT) :: Pf(num_XI,num_XI,num_T)
+    REAL(8), INTENT(OUT) :: Pu(num_XI,num_XI,num_T)
     !
     ! Declaring local variables
     !
@@ -831,14 +1042,11 @@ CONTAINS
     !
     ! Beginning execution
     !
-    CALL Kalman_vec(theta,objf_vec,xf,xu,Pf,Pu)
+    CALL Kalman_vec(theta,objf_vec,xif,xiu,Pf,Pu)
     !
     ! Minus average loglikelihood
     !
     objf = SUM(objf_vec)/num_T
-IF (ISNAN(objf)) THEN
-    PRINT*, 'halt'
-END IF
     !
     ! Ending execution and returning control
     !

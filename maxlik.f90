@@ -118,14 +118,14 @@ CONTAINS
     ! Declaring local variables
     !
     REAL(8) :: objf
-    REAL(8), DIMENSION(num_X,num_T) :: xu, xf
-    REAL(8), DIMENSION(num_X,num_X,num_T) :: Pu, Pf
+    REAL(8), DIMENSION(num_XI,num_T) :: xiu, xif
+    REAL(8), DIMENSION(num_XI,num_XI,num_T) :: Pu, Pf
     !
     ! Beginning execution
     !
     ! Call to loglikelihood subroutine
     !
-    CALL ll(theta,objf,xf,xu,Pf,Pu)
+    CALL ll(theta,objf,xif,xiu,Pf,Pu)
     IF(ISNAN(objf)) objf = -1.d25
     IF(objf .GT. 1.d3) objf = -1.d25
     loglik_politope = -objf

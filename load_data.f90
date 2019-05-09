@@ -18,7 +18,7 @@ CONTAINS
 	!
 	INTEGER :: io_status, datett  				                    ! Open error code
 	INTEGER :: tt, ik, im, ic, h                                    ! Loop index
-	REAL(8) :: fc(num_K,num_T), e_t
+	REAL(8) :: fc(num_K,num_T), e_t, de_t
 	!
 	! Beginning execution
 	!
@@ -43,12 +43,13 @@ CONTAINS
 	! Reading remaining lines
     tt = 0
 	DO 
-        READ(unit_data_e,*,IOSTAT = io_status) datett, e_t
+        READ(unit_data_e,*,IOSTAT = io_status) datett, e_t, de_t
         IF (io_status .LT. 0) EXIT
         tt = tt+1
         IF ((tt .GE. ind_obs1) .AND. (tt .LE. ind_obsT)) THEN
 	        PRINT*, 'tt = ', tt, ' ; e_t = ', e_t
             exrate(tt) = e_t
+            dexrate(tt) = de_t
         END IF
     END DO
 	CLOSE(UNIT = unit_data_e)
@@ -82,13 +83,17 @@ CONTAINS
     DO im = 1, num_theta
         eye_theta(im,im) = 1.d0
     END DO
-    eyeN = 0.d0
+    eyeX = 0.d0
     DO im = 1, num_X
-        eyeN(im,im) = 1.d0
+        eyeX(im,im) = 1.d0
     END DO
-    eyeN2 = 0.d0
-    DO im = 1, num_X**2
-        eyeN2(im,im) = 1.d0
+    eyeXI = 0.d0
+    DO im = 1, num_XI
+        eyeXI(im,im) = 1.d0
+    END DO
+    eyeXI2 = 0.d0
+    DO im = 1, num_XI**2
+        eyeXI2(im,im) = 1.d0
     END DO
     !
     ! Ending execution and returning control

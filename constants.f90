@@ -7,10 +7,10 @@ IMPLICIT NONE
 ! %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 !
 INTEGER, PARAMETER :: to0 = 0                   ! Test mode
-INTEGER, PARAMETER :: to1 = 1                   ! First estimation round
+INTEGER, PARAMETER :: to1 = 0                   ! First estimation round
 INTEGER, PARAMETER :: to2 = 0                   ! Second estimation round
 INTEGER, PARAMETER :: to3 = 0                   ! Final: compute skewnesses amd kurtoses of simulated spreads
-INTEGER, PARAMETER :: to4 = 0                   ! Final: factor trajectories and diagnostics
+INTEGER, PARAMETER :: to4 = 1                   ! Final: factor trajectories and diagnostics
 INTEGER, PARAMETER :: to5 = 0                   ! Final: effects of a change in the lower bound
 INTEGER, PARAMETER :: to6 = 0                   ! Final: asymptotic variance
 !
@@ -40,9 +40,9 @@ INTEGER, PARAMETER :: switch_inival2 = 1        ! = 1: IniVal chosen as in Hamil
 !
 ! Period: 2001m1 - 2016m10 (same for every country)
 !
-INTEGER, PARAMETER :: num_T_tot = 321           ! Total number of observations in data file
+INTEGER, PARAMETER :: num_T_tot = 320           ! Total number of observations in data file
 INTEGER, PARAMETER :: ind_obs1 = 1              ! Index of first observation to be used in estimation
-INTEGER, PARAMETER :: ind_obsT = 321            ! Index of last observation to be used in estimation
+INTEGER, PARAMETER :: ind_obsT = 320            ! Index of last observation to be used in estimation
 INTEGER, PARAMETER :: num_T = &                 ! Total number of observations to be used in estimation
     ind_obsT-ind_obs1+1
 !
@@ -87,10 +87,14 @@ INTEGER, PARAMETER :: sel_X(num_X,num_C) = &    ! (N x C) selection matrix of fa
         1,  2,  3,  0,  &
         1,  2,  4,  0   &
     /), (/ num_X, num_C /) )
+INTEGER, PARAMETER :: sel_X1(num_XC(1)) = sel_X(:num_XC(1),1)
+INTEGER, PARAMETER :: sel_X2(num_XC(2)) = sel_X(:num_XC(2),2)
+INTEGER, PARAMETER :: num_XI = 2*num_X          ! Number of factors in the companion form model
+INTEGER, PARAMETER :: num_Y = num_C*num_K+1     ! (Maximum) Number of observed variables
 !
 ! Model specification
-INTEGER, PARAMETER :: switch_gatsm       = 1    ! = 1: GATSM model
-INTEGER, PARAMETER :: switch_sr_rinf_fix = 0    ! = 1: SR-GATSM, r_inf fixed (same for all c)
+INTEGER, PARAMETER :: switch_gatsm       = 0    ! = 1: GATSM model
+INTEGER, PARAMETER :: switch_sr_rinf_fix = 1    ! = 1: SR-GATSM, r_inf fixed (same for all c)
 INTEGER, PARAMETER :: switch_sr_rinf_est = 0    ! = 1: SR-GATSM, r_inf estimated (same for all c)
 INTEGER, PARAMETER :: switch_sr = &             ! = 1: Shadow Rate model
     switch_sr_rinf_fix+switch_sr_rinf_est
@@ -153,6 +157,7 @@ INTEGER, PARAMETER :: num_Phi = &               ! Only works for models with (Xg
     switch_Phi1*num_X**2+ &
     switch_Phi2*(num_X*(num_X+1)/2-(num_XC(1)-num_XG)*(num_XC(2)-num_XG))
 INTEGER, PARAMETER :: num_Omega = num_C
+INTEGER, PARAMETER :: num_omega_dex = 1
 INTEGER, PARAMETER :: num_r_inf_true = &
     0*switch_r_inf0+ &    
     0*switch_r_inf1+ &
@@ -161,7 +166,8 @@ INTEGER, PARAMETER :: num_r_inf = MAX(1,num_r_inf_true)
 !
 ! Total number of model parameters
 INTEGER, PARAMETER :: num_theta = &
-    num_delta0+num_delta1+num_PhiQ+num_muQ+num_Gamm+num_mu+num_Phi+num_Omega+num_r_inf_true
+    num_delta0+num_delta1+num_PhiQ+num_muQ+num_Gamm+num_mu+num_Phi+ &
+    num_Omega+num_omega_dex+num_r_inf_true
 !
 ! Total number of parameters used to compute the asymptotic variance
 INTEGER, PARAMETER :: num_param = &
@@ -173,6 +179,7 @@ INTEGER, PARAMETER :: num_param = &
     +num_X &                        ! mu
     +num_X*num_X &                  ! Phi
     +num_C &                        ! Omega
+    +1 &                            ! Omega_dex
     +num_r_inf_true                 ! r_inf
 !
 ! %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -270,7 +277,8 @@ CHARACTER(len=30), PARAMETER :: file_res_to2 = 'res_to2.txt'
 CHARACTER(len=30), PARAMETER :: file_states = 'states.txt'
 CHARACTER(len=30), PARAMETER :: file_kc = 'kalman_coeff.txt'
 CHARACTER(len=30), PARAMETER :: file_sr = 'short_rates.txt'
-CHARACTER(len=30), PARAMETER :: file_yhat = 'yhat.txt'
+CHARACTER(len=30), PARAMETER :: file_fhat = 'fhat.txt'
+CHARACTER(len=30), PARAMETER :: file_ehat = 'ehat.txt'
 CHARACTER(len=30), PARAMETER :: file_politope = 'politope.txt'
 CHARACTER(len=30), PARAMETER :: file_datesP = 'datesP.txt'
 CHARACTER(len=30), PARAMETER :: file_datesQ = 'datesQ.txt'
@@ -310,7 +318,8 @@ INTEGER, PARAMETER :: unit_res_to2 = 23
 INTEGER, PARAMETER :: unit_states = 25
 INTEGER, PARAMETER :: unit_kc = 26
 INTEGER, PARAMETER :: unit_sr = 27
-INTEGER, PARAMETER :: unit_yhat = 28
+INTEGER, PARAMETER :: unit_fhat = 28
+INTEGER, PARAMETER :: unit_ehat = 288
 INTEGER, PARAMETER :: unit_politope = 4
 INTEGER, PARAMETER :: unit_datesP = 291
 INTEGER, PARAMETER :: unit_datesQ = 292

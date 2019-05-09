@@ -150,7 +150,7 @@ CONTAINS
     ! delta1
     !
     il = iu
-    theta(il+1:il+num_delta1) = LOG(1.d-2)
+    theta(il+1:il+num_delta1) = LOG(1.d-4)
     iu = il+num_delta1
     !
     ! PhiQ_1
@@ -339,6 +339,12 @@ CONTAINS
     il = iu
     theta(il+1:il+num_C) = LOG(1.d-2)
     iu = iu+num_Omega
+    !
+    ! omega_dex
+    !
+    il = iu
+    theta(il+1) = LOG(1.d-2)
+    iu = iu+num_omega_dex
     !
     ! r_inf
     !
